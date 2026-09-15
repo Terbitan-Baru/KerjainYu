@@ -4,7 +4,7 @@ import { Router } from "express";
 import * as submissionController from "../controllers/submission.controller";
 import { authenticate } from "../middlewares/auth.middlewares";
 import { validate } from "../middlewares/validate";
-import { readRateLimiter, writeRateLimiter } from "../middlewares/rateLimiter"
+import { readRateLimiter, writeRateLimiter, uploadRateLimiter } from "../middlewares/rateLimiter"
 import { idParams } from "../schemas/id.schema";
 import {
     attachmentIdParams,
@@ -26,8 +26,8 @@ router.get(
 
 router.post(
     "/:id/attachments/upload-url",
-    writeRateLimiter,
-    authenticate,
+    authenticate,           
+    uploadRateLimiter,     
     validate(idParams, "params"),
     validate(createFileUploadUrlSchema, "body"),
     submissionController.createAttachmentUploadUrl

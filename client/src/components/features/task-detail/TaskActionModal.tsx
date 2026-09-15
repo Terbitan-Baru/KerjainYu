@@ -69,7 +69,6 @@ export default function TaskActionModal({ definition, projectId, taskId, onClose
 
             if (uploadError) {
                 setError(`Submission terkirim, tapi: ${uploadError}`);
-                handleClose();
                 return;
             }
 

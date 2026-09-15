@@ -1,5 +1,19 @@
 import { z } from "../lib/zod-extended";
 
+
+function refineTypeMatchesMimeType<
+    T extends { type: "file" | "image"; mimeType: string },
+>(data: T): boolean {
+    const isImageMime = data.mimeType.toLowerCase().startsWith("image/");
+    if (data.type === "image") {
+        return isImageMime;
+    }
+    return !isImageMime;
+}
+
+const TYPE_MIME_MISMATCH_MESSAGE =
+    "type tidak konsisten dengan mimeType: gunakan type \"image\" untuk mimeType image/* dan type \"file\" untuk mimeType lainnya.";
+
 // ─────────────────────────────────────────────
 // Content attachment
 // Used when submitting text / link content
@@ -55,6 +69,10 @@ export const createFileUploadUrlSchema = z.object({
         }),
 })
     .strict()
+    .refine(refineTypeMatchesMimeType, {
+        message: TYPE_MIME_MISMATCH_MESSAGE,
+        path: ["mimeType"],
+    })
     .openapi("CreateFileUploadUrlInput");
 
 export const createFileAttachmentSchema = z.object({
@@ -98,6 +116,10 @@ export const createFileAttachmentSchema = z.object({
         }),
 })
     .strict()
+    .refine(refineTypeMatchesMimeType, {
+        message: TYPE_MIME_MISMATCH_MESSAGE,
+        path: ["mimeType"],
+    })
     .openapi("CreateFileAttachmentInput");
 
 export const createAttachmentSchema = z.object({
@@ -203,6 +225,10 @@ export const updateAttachmentSchema = z
                 fileName: z.string().trim().min(1),
                 mimeType: z.string().trim().min(1),
                 fileSize: z.number().positive(),
+            })
+            .refine(refineTypeMatchesMimeType, {
+                message: TYPE_MIME_MISMATCH_MESSAGE,
+                path: ["mimeType"],
             })
             .optional(),
     })

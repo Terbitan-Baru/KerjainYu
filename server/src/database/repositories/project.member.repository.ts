@@ -65,7 +65,7 @@ export async function getRole(projectId: number, userId: number) {
   return db<Role>("project_members")
     .where("project_id", projectId)
     .where("user_id", userId)
-    .select("user_id", "role", "status", "id")
+    .select("id", "user_id", "role", "status")
     .first();
 }
 

@@ -10,10 +10,8 @@ import {
   ConflictError,
   ForbiddenError,
   NotFoundError,
-  UnauthorizedError,
 } from "../errors/AppError";
 import { CreateProjectLinkInput } from "../schemas/projectLinkSchema";
-import { userIdParams, UserIdParams } from "../schemas/userSchema";
 import { notifyUser } from "./notification.service";
 
 //POST /api/v1/projects

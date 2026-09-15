@@ -12,6 +12,7 @@ const testFiles = [
     "src/tests/integration/task.swap.request.test.ts",
     "src/tests/integration/submission.test.ts",
     "src/tests/integration/submission.attachment.test.ts",
+    "src/tests/integration/uploadRateLimiter.test.ts",
     "src/tests/integration/download.test.ts",
     "src/tests/integration/notification_v1.test.ts",
     "src/tests/integration/notification_v2.test.ts"

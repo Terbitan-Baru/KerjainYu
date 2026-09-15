@@ -1,4 +1,4 @@
-import { DeleteObjectCommand, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, PutObjectCommand, GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { randomUUID } from "node:crypto";
 
@@ -24,11 +24,13 @@ export async function createDownloadUrl(objectKey: string) {
 export async function createUploadUrl(
     objectKey: string,
     contentType: string,
+    contentLength: number,
 ) {
     const command = new PutObjectCommand({
         Bucket: STORAGE_BUCKET,
         Key: objectKey,
         ContentType: contentType,
+        ContentLength: contentLength,
     });
 
     return getSignedUrl(s3, command, {
@@ -40,6 +42,7 @@ export async function createSubmissionUploadUrl(
     submissionId: number,
     fileName: string,
     mimeType: string,
+    fileSize: number,
 ) {
     const objectKey = generateObject(
         `submissions/${submissionId}`,
@@ -49,6 +52,7 @@ export async function createSubmissionUploadUrl(
     const uploadUrl = await createUploadUrl(
         objectKey,
         mimeType,
+        fileSize,
     );
 
     return {
@@ -69,4 +73,27 @@ export async function deleteObject(
     return {
         objectKey,
     };
+}
+
+export async function verifyUploadedObject(
+    objectKey: string,
+    expectedSize: number,
+): Promise<{ exists: boolean; sizeMatches: boolean; actualSize?: number }> {
+    try {
+        const head = await s3.send(
+            new HeadObjectCommand({ Bucket: STORAGE_BUCKET, Key: objectKey }),
+        );
+        const actualSize = head.ContentLength ?? 0;
+        return {
+            exists: true,
+            sizeMatches: actualSize === expectedSize,
+            actualSize,
+        };
+    } catch (err: any) {
+        // S3/MinIO melempar error (biasanya NotFound/404) kalau object tidak ada.
+        if (err?.name === "NotFound" || err?.$metadata?.httpStatusCode === 404) {
+            return { exists: false, sizeMatches: false };
+        }
+        throw err; // error lain (network, permission) — jangan ditelan diam-diam
+    }
 }

@@ -11,6 +11,12 @@ import { assertTaskAccess } from "./helper/task.helper"
 import { notifyUser } from "./notification.service"
 import { file } from "zod"
 
+// B4: batas maksimum jumlah attachment (gabungan text/link/file) per
+// submission. Tanpa batas ini, satu submission bisa "digembungkan" dengan
+// ribuan attachment kecil (baik lewat banyak request paralel maupun lewat
+// script) yang membebani query getAttachmentsBySubmission dan storage.
+export const MAX_ATTACHMENTS_PER_SUBMISSION = 20;
+
 //POST /api/v1/tasks/:id/submissions
 export async function createSubmission(
     taskId: number,
@@ -119,6 +125,7 @@ export async function createAttachmentUploadUrl(
         submissionId,
         input.fileName,
         input.mimeType,
+        input.fileSize,
     );
 }
 
@@ -164,6 +171,19 @@ export async function createAttachment(
     }
 
     return db.transaction(async (trx) => {
+        const existingCount = await submissionRepo.countAttachmentsBySubmission(
+            submissionId,
+            trx,
+        );
+        const incomingCount =
+            (input.content ? 1 : 0) + (input.file ? 1 : 0);
+
+        if (existingCount + incomingCount > MAX_ATTACHMENTS_PER_SUBMISSION) {
+            throw new ConflictError(
+                `Submission ini sudah memiliki ${existingCount} attachment, maksimum adalah ${MAX_ATTACHMENTS_PER_SUBMISSION}.`,
+            );
+        }
+
         let contentAttachment = null;
         let fileAttachment = null;
         if (input.content) {
@@ -175,6 +195,22 @@ export async function createAttachment(
                     "Invalid object key",
                 );
             }
+
+            const verification = await storageService.verifyUploadedObject(
+                input.file.objectKey,
+                input.file.fileSize,
+            );
+            if (!verification.exists) {
+                throw new ConflictError(
+                    "File belum berhasil diupload ke storage. Upload file terlebih dahulu sebelum menyimpan metadata.",
+                );
+            }
+            if (!verification.sizeMatches) {
+                throw new ConflictError(
+                    `Ukuran file yang diupload (${verification.actualSize} bytes) tidak sesuai dengan yang dilaporkan (${input.file.fileSize} bytes).`,
+                );
+            }
+
             fileAttachment = await submissionRepo.createFileAttachment(
                 {
                     submissionId,
@@ -260,25 +296,24 @@ export async function deleteAttachment(submissionId: number, attachmentId: numbe
     if (!submission) {
         throw new NotFoundError("Submission not found")
     }
-    const attachment = await submissionRepo.getAttachmentById(attachmentId)
-    const task = await taskRepo.getTaskById(submission.taskId)
-    if (!task) {
-        throw new NotFoundError("Task not found")
-    }
-    const isAssignee = task.assigneeId == userId;
 
-    if (!isAssignee) {
-        await assertProjectLeader(
-            task.projectId,
-            userId,
-        );
-    }
+    const attachment = await submissionRepo.getAttachmentById(attachmentId)
     if (!attachment) {
         throw new NotFoundError("Attachment not found")
     }
     if (attachment.submissionId != submission.id) {
         throw new NotFoundError("Attachment not found")
     }
+
+    const task = await taskRepo.getTaskById(submission.taskId)
+    if (!task) {
+        throw new NotFoundError("Task not found")
+    }
+    const isAssignee = task.assigneeId == userId;
+    if (!isAssignee) {
+        await assertProjectLeader(task.projectId, userId)
+    }
+
     // Delete the object first to avoid leaving orphaned DB metadata.
     // Note: DB and object storage are separate systems, so this operation
     // is not fully atomic. A failed DB delete after storage deletion
@@ -375,6 +410,21 @@ export async function updateAttachment(
     ) {
         throw new ForbiddenError(
             "Invalid object key",
+        );
+    }
+
+    const verification = await storageService.verifyUploadedObject(
+        file.objectKey,
+        file.fileSize,
+    );
+    if (!verification.exists) {
+        throw new ConflictError(
+            "File belum berhasil diupload ke storage. Upload file terlebih dahulu sebelum menyimpan metadata.",
+        );
+    }
+    if (!verification.sizeMatches) {
+        throw new ConflictError(
+            `Ukuran file yang diupload (${verification.actualSize} bytes) tidak sesuai dengan yang dilaporkan (${file.fileSize} bytes).`,
         );
     }
 

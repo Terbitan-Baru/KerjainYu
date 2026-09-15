@@ -44,7 +44,10 @@ import {
     s3,
     STORAGE_BUCKET,
 } from "../../config/storage";
-import { updateAttachment } from "../../services/submission.service";
+import {
+    updateAttachment,
+    MAX_ATTACHMENTS_PER_SUBMISSION,
+} from "../../services/submission.service";
 
 // ============================================================
 // HELPERS
@@ -182,6 +185,27 @@ async function registerContentAttachment(
             content,
             file: null,
         });
+}
+
+// ============================================================
+// UPLOAD REAL FILE TO OBJECT STORAGE (used to satisfy B2's
+// storage-verification step before registering metadata)
+// ============================================================
+
+async function uploadRealFile(
+    uploadUrl: string,
+    sizeInBytes: number,
+    contentType = "application/pdf",
+) {
+    const body = Buffer.alloc(sizeInBytes, "a");
+    const res = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": contentType },
+        body,
+    });
+    if (!res.ok) {
+        throw new Error(`Upload gagal saat setup test: ${res.status}`);
+    }
 }
 
 // ============================================================
@@ -414,7 +438,19 @@ describe(
                         );
 
                         // ------------------------------------
-                        // 2. Register metadata
+                        // 2. Upload the real file (required
+                        //    since createAttachment now verifies
+                        //    the object actually exists in storage)
+                        // ------------------------------------
+
+                        await uploadRealFile(
+                            uploadUrl,
+                            2458123,
+                            "application/pdf",
+                        );
+
+                        // ------------------------------------
+                        // 3. Register metadata
                         // ------------------------------------
 
                         const attachmentRes =
@@ -726,9 +762,16 @@ describe(
                         ).toBe(200);
 
                         const {
+                            uploadUrl,
                             objectKey,
                         } =
                             uploadRes.body.data;
+
+                        await uploadRealFile(
+                            uploadUrl,
+                            1000,
+                            "application/pdf",
+                        );
 
                         const fileRes =
                             await registerFileAttachment(
@@ -1044,9 +1087,16 @@ describe(
                         ).toBe(200);
 
                         const {
+                            uploadUrl,
                             objectKey,
                         } =
                             uploadRes.body.data;
+
+                        await uploadRealFile(
+                            uploadUrl,
+                            1000,
+                            "application/pdf",
+                        );
 
                         const createRes =
                             await registerFileAttachment(
@@ -1345,6 +1395,80 @@ describe(
                         ).toBe(404);
                     },
                 );
+
+                it(
+                    "should return 404 (not 403) for a non-existent attachment even when requester has no leader/assignee authorization",
+                    async () => {
+                        const {
+                            projectId,
+                            leader,
+                            submissionId,
+                        } =
+                            await createTaskWithSubmission();
+
+                        const stranger =
+                            await inviteAndAccept(
+                                leader.cookie,
+                                projectId,
+                                `attachment_del_stranger_${Date.now()}`,
+                            );
+
+                        // Stranger is a project member but neither the
+                        // assignee of the task nor the project leader —
+                        // if authorization ran before the existence check,
+                        // this could surface as 403 instead of 404.
+                        const res =
+                            await request(app)
+                                .delete(
+                                    `/api/v1/submissions/${submissionId}/attachments/999999`,
+                                )
+                                .set(
+                                    "Cookie",
+                                    stranger.cookie,
+                                );
+
+                        expect(res.status).toBe(404);
+                    },
+                );
+
+                it(
+                    "should reject deleting an attachment that belongs to a different submission with 404",
+                    async () => {
+                        const first =
+                            await createTaskWithSubmission();
+                        const second =
+                            await createTaskWithSubmission();
+
+                        const createRes =
+                            await registerContentAttachment(
+                                first.member.cookie,
+                                first.submissionId,
+                                {
+                                    type: "text",
+                                    content:
+                                        "Belongs to submission #1",
+                                },
+                            );
+
+                        expect(createRes.status).toBe(201);
+
+                        const attachmentId =
+                            createRes.body.data
+                                .contentAttachment.id;
+
+                        const res =
+                            await request(app)
+                                .delete(
+                                    `/api/v1/submissions/${second.submissionId}/attachments/${attachmentId}`,
+                                )
+                                .set(
+                                    "Cookie",
+                                    second.member.cookie,
+                                );
+
+                        expect(res.status).toBe(404);
+                    },
+                );
             },
 
         );
@@ -1401,6 +1525,663 @@ describe(
                             res.status,
                         ).toBe(401);
                     },
+                );
+            },
+        );
+
+        // ====================================================
+        // B1 — CONTENT-LENGTH ENFORCEMENT ON PRESIGNED UPLOAD URL
+        // ====================================================
+
+        describe(
+            "POST /api/v1/submissions/:id/attachments/upload-url — Content-Length enforcement",
+            () => {
+                it(
+                    "should accept a real PUT whose body size matches the signed fileSize",
+                    async () => {
+                        const {
+                            member,
+                            submissionId,
+                        } = await createTaskWithSubmission();
+
+                        const uploadRes = await requestUploadUrl(
+                            member.cookie,
+                            submissionId,
+                            {
+                                type: "file",
+                                fileName: "matching-size.txt",
+                                mimeType: "text/plain",
+                                fileSize: 1000,
+                            },
+                        );
+
+                        expect(uploadRes.status).toBe(200);
+
+                        const { uploadUrl } = uploadRes.body.data;
+
+                        const putRes = await fetch(uploadUrl, {
+                            method: "PUT",
+                            headers: { "Content-Type": "text/plain" },
+                            body: Buffer.alloc(1000, "a"),
+                        });
+
+                        expect(putRes.ok).toBe(true);
+                    },
+                );
+
+                it(
+                    "should reject a real PUT whose body size differs from the signed fileSize",
+                    async () => {
+                        const {
+                            member,
+                            submissionId,
+                        } = await createTaskWithSubmission();
+
+                        const uploadRes = await requestUploadUrl(
+                            member.cookie,
+                            submissionId,
+                            {
+                                type: "file",
+                                fileName: "mismatched-size.txt",
+                                mimeType: "text/plain",
+                                fileSize: 1000,
+                            },
+                        );
+
+                        expect(uploadRes.status).toBe(200);
+
+                        const { uploadUrl } = uploadRes.body.data;
+
+                        // Body is a different size than what was signed
+                        // (Content-Length mismatch) — MinIO/S3 must reject
+                        // this at the protocol level.
+                        const putRes = await fetch(uploadUrl, {
+                            method: "PUT",
+                            headers: { "Content-Type": "text/plain" },
+                            body: Buffer.alloc(5000, "x"),
+                        });
+
+                        expect(putRes.ok).toBe(false);
+                    },
+                );
+            },
+        );
+
+        // ====================================================
+        // B2 — STORAGE VERIFICATION BEFORE SAVING METADATA
+        // ====================================================
+
+        describe(
+            "POST /api/v1/submissions/:id/attachments — storage verification",
+            () => {
+                it(
+                    "should reject registering metadata when the object was never uploaded",
+                    async () => {
+                        const {
+                            member,
+                            submissionId,
+                        } = await createTaskWithSubmission();
+
+                        const uploadRes = await requestUploadUrl(
+                            member.cookie,
+                            submissionId,
+                            {
+                                type: "file",
+                                fileName: "never-uploaded.pdf",
+                                mimeType: "application/pdf",
+                                fileSize: 1234,
+                            },
+                        );
+
+                        expect(uploadRes.status).toBe(200);
+
+                        const { objectKey } = uploadRes.body.data;
+
+                        // Deliberately skip the PUT to object storage.
+                        const registerRes = await registerFileAttachment(
+                            member.cookie,
+                            submissionId,
+                            {
+                                type: "file",
+                                objectKey,
+                                fileName: "never-uploaded.pdf",
+                                mimeType: "application/pdf",
+                                fileSize: 1234,
+                            },
+                        );
+
+                        expect(registerRes.status).toBe(409);
+                        expect(registerRes.body.error.code).toBe("CONFLICT");
+                    },
+                );
+
+                it(
+                    "should reject registering metadata when claimed fileSize does not match the uploaded object's actual size",
+                    async () => {
+                        const {
+                            member,
+                            submissionId,
+                        } = await createTaskWithSubmission();
+
+                        const uploadRes = await requestUploadUrl(
+                            member.cookie,
+                            submissionId,
+                            {
+                                type: "file",
+                                fileName: "size-mismatch.pdf",
+                                mimeType: "application/pdf",
+                                fileSize: 5000,
+                            },
+                        );
+
+                        expect(uploadRes.status).toBe(200);
+
+                        const { uploadUrl, objectKey } = uploadRes.body.data;
+
+                        await uploadRealFile(uploadUrl, 5000, "application/pdf");
+
+                        // Claim a different size than what was actually
+                        // uploaded to storage.
+                        const registerRes = await registerFileAttachment(
+                            member.cookie,
+                            submissionId,
+                            {
+                                type: "file",
+                                objectKey,
+                                fileName: "size-mismatch.pdf",
+                                mimeType: "application/pdf",
+                                fileSize: 100,
+                            },
+                        );
+
+                        expect(registerRes.status).toBe(409);
+                        expect(registerRes.body.error.code).toBe("CONFLICT");
+                    },
+                );
+
+                it(
+                    "should succeed when the uploaded object exists and its size matches the claim (happy path regression)",
+                    async () => {
+                        const {
+                            member,
+                            submissionId,
+                        } = await createTaskWithSubmission();
+
+                        const uploadRes = await requestUploadUrl(
+                            member.cookie,
+                            submissionId,
+                            {
+                                type: "file",
+                                fileName: "size-match.pdf",
+                                mimeType: "application/pdf",
+                                fileSize: 3000,
+                            },
+                        );
+
+                        expect(uploadRes.status).toBe(200);
+
+                        const { uploadUrl, objectKey } = uploadRes.body.data;
+
+                        await uploadRealFile(uploadUrl, 3000, "application/pdf");
+
+                        const registerRes = await registerFileAttachment(
+                            member.cookie,
+                            submissionId,
+                            {
+                                type: "file",
+                                objectKey,
+                                fileName: "size-match.pdf",
+                                mimeType: "application/pdf",
+                                fileSize: 3000,
+                            },
+                        );
+
+                        expect(registerRes.status).toBe(201);
+                        expect(registerRes.body.success).toBe(true);
+                    },
+                );
+
+                it(
+                    "should reject updating an attachment's file when the new object was never uploaded",
+                    async () => {
+                        const {
+                            member,
+                            submissionId,
+                        } = await createTaskWithSubmission();
+
+                        // Create a valid file attachment first.
+                        const initialUploadRes = await requestUploadUrl(
+                            member.cookie,
+                            submissionId,
+                            {
+                                type: "file",
+                                fileName: "initial.pdf",
+                                mimeType: "application/pdf",
+                                fileSize: 500,
+                            },
+                        );
+                        expect(initialUploadRes.status).toBe(200);
+                        const {
+                            uploadUrl: initialUploadUrl,
+                            objectKey: initialObjectKey,
+                        } = initialUploadRes.body.data;
+                        await uploadRealFile(initialUploadUrl, 500, "application/pdf");
+
+                        const createRes = await registerFileAttachment(
+                            member.cookie,
+                            submissionId,
+                            {
+                                type: "file",
+                                objectKey: initialObjectKey,
+                                fileName: "initial.pdf",
+                                mimeType: "application/pdf",
+                                fileSize: 500,
+                            },
+                        );
+                        expect(createRes.status).toBe(201);
+
+                        const attachmentId =
+                            createRes.body.data.fileAttachment.id;
+
+                        // Request a new presigned URL but never upload to it.
+                        const newUploadRes = await requestUploadUrl(
+                            member.cookie,
+                            submissionId,
+                            {
+                                type: "file",
+                                fileName: "replacement.pdf",
+                                mimeType: "application/pdf",
+                                fileSize: 700,
+                            },
+                        );
+                        expect(newUploadRes.status).toBe(200);
+                        const { objectKey: newObjectKey } = newUploadRes.body.data;
+
+                        const updateRes = await request(app)
+                            .patch(
+                                `/api/v1/submissions/${submissionId}/attachments/${attachmentId}`,
+                            )
+                            .set("Cookie", member.cookie)
+                            .send({
+                                file: {
+                                    type: "file",
+                                    objectKey: newObjectKey,
+                                    fileName: "replacement.pdf",
+                                    mimeType: "application/pdf",
+                                    fileSize: 700,
+                                },
+                            });
+
+                        expect(updateRes.status).toBe(409);
+                        expect(updateRes.body.error.code).toBe("CONFLICT");
+                    },
+                );
+            },
+        );
+    },
+);
+
+// ============================================================
+// B3 — TYPE vs MIMETYPE CONSISTENCY
+// ============================================================
+
+describe(
+    "type/mimeType consistency validation (B3)",
+    () => {
+        describe("POST /api/v1/submissions/:id/attachments/upload-url", () => {
+            it(
+                "should reject type 'image' with a non-image mimeType",
+                async () => {
+                    const { member, submissionId } =
+                        await createTaskWithSubmission();
+
+                    const res = await requestUploadUrl(
+                        member.cookie,
+                        submissionId,
+                        {
+                            type: "image",
+                            fileName: "disguised.pdf",
+                            mimeType: "application/pdf",
+                            fileSize: 1000,
+                        },
+                    );
+
+                    expect(res.status).toBe(400);
+                },
+            );
+
+            it(
+                "should reject type 'file' with an image mimeType",
+                async () => {
+                    const { member, submissionId } =
+                        await createTaskWithSubmission();
+
+                    const res = await requestUploadUrl(
+                        member.cookie,
+                        submissionId,
+                        {
+                            type: "file",
+                            fileName: "disguised.png",
+                            mimeType: "image/png",
+                            fileSize: 1000,
+                        },
+                    );
+
+                    expect(res.status).toBe(400);
+                },
+            );
+
+            it(
+                "should accept type 'image' with a matching image mimeType",
+                async () => {
+                    const { member, submissionId } =
+                        await createTaskWithSubmission();
+
+                    const res = await requestUploadUrl(
+                        member.cookie,
+                        submissionId,
+                        {
+                            type: "image",
+                            fileName: "screenshot.png",
+                            mimeType: "image/png",
+                            fileSize: 1000,
+                        },
+                    );
+
+                    expect(res.status).toBe(200);
+                },
+            );
+        });
+
+        describe("POST /api/v1/submissions/:id/attachments", () => {
+            it(
+                "should reject registering type 'image' with a non-image mimeType",
+                async () => {
+                    const { member, submissionId } =
+                        await createTaskWithSubmission();
+
+                    const uploadRes = await requestUploadUrl(
+                        member.cookie,
+                        submissionId,
+                        {
+                            type: "file",
+                            fileName: "actually-a-pdf.pdf",
+                            mimeType: "application/pdf",
+                            fileSize: 500,
+                        },
+                    );
+                    expect(uploadRes.status).toBe(200);
+                    const { uploadUrl, objectKey } = uploadRes.body.data;
+                    await uploadRealFile(uploadUrl, 500, "application/pdf");
+
+                    // Claim `type: "image"` at registration time even
+                    // though the uploaded content is a PDF.
+                    const registerRes = await registerFileAttachment(
+                        member.cookie,
+                        submissionId,
+                        {
+                            type: "image",
+                            objectKey,
+                            fileName: "actually-a-pdf.pdf",
+                            mimeType: "application/pdf",
+                            fileSize: 500,
+                        },
+                    );
+
+                    expect(registerRes.status).toBe(400);
+                },
+            );
+
+            it(
+                "should successfully register a real image with type 'image' and a matching mimeType",
+                async () => {
+                    const { member, submissionId } =
+                        await createTaskWithSubmission();
+
+                    const uploadRes = await requestUploadUrl(
+                        member.cookie,
+                        submissionId,
+                        {
+                            type: "image",
+                            fileName: "screenshot.png",
+                            mimeType: "image/png",
+                            fileSize: 800,
+                        },
+                    );
+                    expect(uploadRes.status).toBe(200);
+                    const { uploadUrl, objectKey } = uploadRes.body.data;
+                    await uploadRealFile(uploadUrl, 800, "image/png");
+
+                    const registerRes = await registerFileAttachment(
+                        member.cookie,
+                        submissionId,
+                        {
+                            type: "image",
+                            objectKey,
+                            fileName: "screenshot.png",
+                            mimeType: "image/png",
+                            fileSize: 800,
+                        },
+                    );
+
+                    expect(registerRes.status).toBe(201);
+                    expect(
+                        registerRes.body.data.fileAttachment.type,
+                    ).toBe("image");
+                },
+            );
+        });
+
+        describe(
+            "PATCH /api/v1/submissions/:id/attachments/:attachmentId",
+            () => {
+                it(
+                    "should reject updating a file attachment with mismatched type/mimeType",
+                    async () => {
+                        const { member, submissionId } =
+                            await createTaskWithSubmission();
+
+                        const initialUploadRes = await requestUploadUrl(
+                            member.cookie,
+                            submissionId,
+                            {
+                                type: "file",
+                                fileName: "initial.pdf",
+                                mimeType: "application/pdf",
+                                fileSize: 500,
+                            },
+                        );
+                        expect(initialUploadRes.status).toBe(200);
+                        const {
+                            uploadUrl: initialUploadUrl,
+                            objectKey: initialObjectKey,
+                        } = initialUploadRes.body.data;
+                        await uploadRealFile(
+                            initialUploadUrl,
+                            500,
+                            "application/pdf",
+                        );
+
+                        const createRes = await registerFileAttachment(
+                            member.cookie,
+                            submissionId,
+                            {
+                                type: "file",
+                                objectKey: initialObjectKey,
+                                fileName: "initial.pdf",
+                                mimeType: "application/pdf",
+                                fileSize: 500,
+                            },
+                        );
+                        expect(createRes.status).toBe(201);
+
+                        const attachmentId =
+                            createRes.body.data.fileAttachment.id;
+
+                        const updateRes = await request(app)
+                            .patch(
+                                `/api/v1/submissions/${submissionId}/attachments/${attachmentId}`,
+                            )
+                            .set("Cookie", member.cookie)
+                            .send({
+                                file: {
+                                    type: "image",
+                                    objectKey: initialObjectKey,
+                                    fileName: "initial.pdf",
+                                    mimeType: "application/pdf",
+                                    fileSize: 500,
+                                },
+                            });
+
+                        expect(updateRes.status).toBe(400);
+                    },
+                );
+            },
+        );
+    },
+);
+
+// ============================================================
+// B4 — MAX ATTACHMENTS PER SUBMISSION
+// ============================================================
+
+describe(
+    "POST /api/v1/submissions/:id/attachments — max attachment limit (B4)",
+    () => {
+        it(
+            "should allow attachments up to the configured maximum",
+            async () => {
+                const {
+                    member,
+                    submissionId,
+                } = await createTaskWithSubmission();
+
+                for (let i = 0; i < MAX_ATTACHMENTS_PER_SUBMISSION; i++) {
+                    const res = await registerContentAttachment(
+                        member.cookie,
+                        submissionId,
+                        {
+                            type: "text",
+                            content: `Attachment number ${i}`,
+                        },
+                    );
+                    expect(res.status).toBe(201);
+                }
+            },
+        );
+
+        it(
+            "should reject creating an attachment once the maximum is reached",
+            async () => {
+                const {
+                    member,
+                    submissionId,
+                } = await createTaskWithSubmission();
+
+                for (let i = 0; i < MAX_ATTACHMENTS_PER_SUBMISSION; i++) {
+                    const res = await registerContentAttachment(
+                        member.cookie,
+                        submissionId,
+                        {
+                            type: "text",
+                            content: `Attachment number ${i}`,
+                        },
+                    );
+                    expect(res.status).toBe(201);
+                }
+
+                const overflowRes = await registerContentAttachment(
+                    member.cookie,
+                    submissionId,
+                    {
+                        type: "text",
+                        content: "This one should be rejected",
+                    },
+                );
+
+                expect(overflowRes.status).toBe(409);
+                expect(overflowRes.body.error.code).toBe("CONFLICT");
+
+                // Pastikan attachment yang sudah ada sebelumnya tidak ikut
+                // bertambah gara-gara request yang ditolak.
+                const attachmentsRes = await request(app)
+                    .get(`/api/v1/submissions/${submissionId}/attachments`)
+                    .set("Cookie", member.cookie);
+                expect(attachmentsRes.body.data.length).toBe(
+                    MAX_ATTACHMENTS_PER_SUBMISSION,
+                );
+            },
+        );
+
+        it(
+            "should count a single request with both content and file as two attachments toward the limit",
+            async () => {
+                const {
+                    member,
+                    submissionId,
+                } = await createTaskWithSubmission();
+
+                // Fill up to exactly one slot away from the maximum.
+                for (
+                    let i = 0;
+                    i < MAX_ATTACHMENTS_PER_SUBMISSION - 1;
+                    i++
+                ) {
+                    const res = await registerContentAttachment(
+                        member.cookie,
+                        submissionId,
+                        {
+                            type: "text",
+                            content: `Attachment number ${i}`,
+                        },
+                    );
+                    expect(res.status).toBe(201);
+                }
+
+                // Only 1 slot remains, but this request tries to add 2
+                // (content + file) in one call — it must be rejected
+                // entirely (no partial insert), not just capped.
+                const uploadRes = await requestUploadUrl(
+                    member.cookie,
+                    submissionId,
+                    {
+                        type: "file",
+                        fileName: "overflow.pdf",
+                        mimeType: "application/pdf",
+                        fileSize: 100,
+                    },
+                );
+                expect(uploadRes.status).toBe(200);
+                const { uploadUrl, objectKey } = uploadRes.body.data;
+                await uploadRealFile(uploadUrl, 100, "application/pdf");
+
+                const combinedRes = await request(app)
+                    .post(
+                        `/api/v1/submissions/${submissionId}/attachments`,
+                    )
+                    .set("Cookie", member.cookie)
+                    .send({
+                        content: {
+                            type: "text",
+                            content: "The last text slot",
+                        },
+                        file: {
+                            type: "file",
+                            objectKey,
+                            fileName: "overflow.pdf",
+                            mimeType: "application/pdf",
+                            fileSize: 100,
+                        },
+                    });
+
+                expect(combinedRes.status).toBe(409);
+                expect(combinedRes.body.error.code).toBe("CONFLICT");
+
+                const attachmentsRes = await request(app)
+                    .get(`/api/v1/submissions/${submissionId}/attachments`)
+                    .set("Cookie", member.cookie);
+                expect(attachmentsRes.body.data.length).toBe(
+                    MAX_ATTACHMENTS_PER_SUBMISSION - 1,
                 );
             },
         );
@@ -1728,14 +2509,28 @@ describe(
         // =====================================================
 
         it("should update file attachment successfully", async () => {
+            const oldUploadRes = await requestUploadUrl(
+                member.cookie,
+                submissionId,
+                {
+                    type: "file",
+                    fileName: "old-file.pdf",
+                    mimeType: "application/pdf",
+                    fileSize: 1000,
+                },
+            );
+            expect(oldUploadRes.status).toBe(200);
+            const { uploadUrl: oldUploadUrl, objectKey: oldObjectKey } =
+                oldUploadRes.body.data;
+            await uploadRealFile(oldUploadUrl, 1000, "application/pdf");
+
             const createRes =
                 await registerFileAttachment(
                     member.cookie,
                     submissionId,
                     {
                         type: "file",
-                        objectKey:
-                            `submissions/${submissionId}/old-file.pdf`,
+                        objectKey: oldObjectKey,
                         fileName: "old-file.pdf",
                         mimeType: "application/pdf",
                         fileSize: 1000,
@@ -1747,8 +2542,20 @@ describe(
             const attachment =
                 createRes.body.data.fileAttachment;
 
-            const newObjectKey =
-                `submissions/${submissionId}/new-file.pdf`;
+            const newUploadRes = await requestUploadUrl(
+                member.cookie,
+                submissionId,
+                {
+                    type: "file",
+                    fileName: "new-file.pdf",
+                    mimeType: "application/pdf",
+                    fileSize: 2000,
+                },
+            );
+            expect(newUploadRes.status).toBe(200);
+            const { uploadUrl: newUploadUrl, objectKey: newObjectKey } =
+                newUploadRes.body.data;
+            await uploadRealFile(newUploadUrl, 2000, "application/pdf");
 
             const updateRes =
                 await request(app)
@@ -2082,14 +2889,27 @@ describe(
         it(
             "should reject changing file attachment into content attachment",
             async () => {
+                const uploadRes = await requestUploadUrl(
+                    member.cookie,
+                    submissionId,
+                    {
+                        type: "file",
+                        fileName: "file.pdf",
+                        mimeType: "application/pdf",
+                        fileSize: 1000,
+                    },
+                );
+                expect(uploadRes.status).toBe(200);
+                const { uploadUrl, objectKey } = uploadRes.body.data;
+                await uploadRealFile(uploadUrl, 1000, "application/pdf");
+
                 const createRes =
                     await registerFileAttachment(
                         member.cookie,
                         submissionId,
                         {
                             type: "file",
-                            objectKey:
-                                `submissions/${submissionId}/file.pdf`,
+                            objectKey,
                             fileName: "file.pdf",
                             mimeType: "application/pdf",
                             fileSize: 1000,
@@ -2165,14 +2985,27 @@ describe(
         it(
             "should reject object key belonging to another submission",
             async () => {
+                const uploadRes = await requestUploadUrl(
+                    member.cookie,
+                    submissionId,
+                    {
+                        type: "file",
+                        fileName: "old.pdf",
+                        mimeType: "application/pdf",
+                        fileSize: 1000,
+                    },
+                );
+                expect(uploadRes.status).toBe(200);
+                const { uploadUrl, objectKey } = uploadRes.body.data;
+                await uploadRealFile(uploadUrl, 1000, "application/pdf");
+
                 const createRes =
                     await registerFileAttachment(
                         member.cookie,
                         submissionId,
                         {
                             type: "file",
-                            objectKey:
-                                `submissions/${submissionId}/old.pdf`,
+                            objectKey,
                             fileName: "old.pdf",
                             mimeType: "application/pdf",
                             fileSize: 1000,

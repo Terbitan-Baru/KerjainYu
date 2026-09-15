@@ -205,12 +205,31 @@ export async function getAttachmentsBySubmission(
     }));
 }
 
+export async function countAttachmentsBySubmission(
+    submissionId: number,
+    trx?: Knex.Transaction,
+): Promise<number> {
+    const executor = trx || db;
+    const row = await executor("submission_attachments")
+        .where({ submissionId })
+        .count<{ count: string }[]>("id as count")
+        .first();
+    return row ? Number(row.count) : 0;
+}
+
 export async function getAttachmentById(
     attachmentId: number,
 ) {
     return db("submission_attachments")
         .where({ id: attachmentId })
         .first();
+}
+
+export async function objectKeyExists(objectKey: string): Promise<boolean> {
+    const row = await db("submission_attachments")
+        .where({ objectKey })
+        .first("id");
+    return row != null;
 }
 
 export async function deleteAttachment(

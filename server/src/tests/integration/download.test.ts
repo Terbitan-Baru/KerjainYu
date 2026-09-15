@@ -12,6 +12,11 @@ vi.mock('../../services/storage.service', () => ({
     createUploadUrl: vi.fn(),
     deleteObject: vi.fn(),
     generateObject: vi.fn(),
+    verifyUploadedObject: vi.fn().mockResolvedValue({
+        exists: true,
+        sizeMatches: true,
+        actualSize: 123456,
+    }),
 }));
 
 async function createProject(cookie: string) {

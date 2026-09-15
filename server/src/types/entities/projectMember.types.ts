@@ -11,5 +11,5 @@ export interface ProjectMember {
 }
 
 export interface Role {
-    userId: number, role: ProjectRole, status: MemberStatus, id:number
+    id: number, userId: number, role: ProjectRole, status: MemberStatus
 }

@@ -11,8 +11,8 @@ type MoreSheetProps = {
 };
 
 const MAIN_SHEET_ITEMS = [
-    { label: "Archive", href: ROUTES.ARCHIVE, icon: Archive },
-    { label: "Help Center", href: ROUTES.HELP_CENTER, icon: HelpCircle },
+    { label: "Pusat Bantuan", href: ROUTES.HELP_CENTER, icon: HelpCircle },
+    { label: "Arsip Proyek", href: ROUTES.ARCHIVE, icon: Archive },
 ];
 
 function getProjectSheetItems(projectId: string) {
@@ -60,9 +60,9 @@ export default function MoreSheet({ isOpen, onClose, projectId }: MoreSheetProps
                             href={href}
                             aria-label={`Buka halaman ${label}`}
                             onClick={onClose}
-                            className="flex items-center gap-3 px-4 py-3 text-sm font-inter text-foreground hover:bg-status-todo-bg"
+                            className="group flex items-center gap-3 px-4 py-3 text-sm font-inter text-foreground transition-colors duration-200 hover:bg-status-todo-bg"
                         >
-                            <Icon className="size-5 text-muted" />
+                            <Icon className="size-5 text-muted transition-colors duration-200 group-hover:text-foreground" />
                             {label}
                         </Link>
                     ))}

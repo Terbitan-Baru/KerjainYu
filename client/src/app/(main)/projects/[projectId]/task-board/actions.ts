@@ -12,6 +12,8 @@ import {
   assignTaskRequest,
   createTaskCommentRequest,
   deleteTaskCommentRequest,
+  updateTaskRequest,
+  UpdateTaskPayload,
 } from "@/lib/api/tasks/tasks";
 import {
   reviewSubmissionRequest,
@@ -305,6 +307,34 @@ export async function assignTaskAction(
 
   revalidatePath(projectRoutes(projectId).TASK_BOARD);
   revalidatePath(taskDetailRoute(projectId, taskId));
+  return { success: true, error: null };
+}
+
+export type UpdateTaskState = {
+  success: boolean;
+  error: string | null;
+  fieldErrors?: Record<string, string>;
+};
+
+export async function updateTaskAction(
+  projectId: string,
+  taskId: number,
+  payload: UpdateTaskPayload,
+): Promise<UpdateTaskState> {
+  const cookieStore = await cookies();
+  const cookieHeader = cookieStore.toString();
+
+  try {
+    await updateTaskRequest(taskId, payload, cookieHeader);
+  } catch (err) {
+    if (err instanceof ApiRequestError) {
+      return { success: false, error: err.message };
+    }
+    return { success: false, error: "Terjadi kesalahan tak terduga. Coba lagi." };
+  }
+
+  revalidatePath(taskDetailRoute(projectId, taskId));
+  revalidatePath(projectRoutes(projectId).TASK_BOARD);
   return { success: true, error: null };
 }
 

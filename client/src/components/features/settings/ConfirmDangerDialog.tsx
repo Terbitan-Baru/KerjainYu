@@ -27,7 +27,7 @@ export default function ConfirmDangerDialog({
     onConfirm,
 }: ConfirmDangerDialogProps) {
     return (
-        <Modal isOpen={isOpen} onClose={onCancel} title={title}>
+        <Modal isOpen={isOpen} onClose={isPending ? () => { } : onCancel} title={title}>
             <div className="flex flex-col gap-4">
                 <div className="flex items-start gap-3 rounded-lg bg-status-blocked-bg p-3">
                     <AlertTriangle className="mt-0.5 size-4 shrink-0 text-status-blocked-text" />

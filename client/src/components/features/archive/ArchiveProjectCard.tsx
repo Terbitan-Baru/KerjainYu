@@ -64,7 +64,10 @@ export default function ArchiveProjectCard({ project, canManage }: ArchiveProjec
             >
                 {/* Header */}
                 <div className="flex items-start justify-between gap-3">
-                    <h3 className="font-inter text-base font-semibold text-foreground sm:text-lg">
+                    <h3
+                        title={project.title}
+                        className="min-w-0 truncate font-inter text-base font-semibold text-foreground sm:text-lg"
+                    >
                         {project.title}
                     </h3>
                     <span

@@ -51,6 +51,27 @@ export async function setProjectArchivedAction(
     }
 
     revalidatePath(projectRoutes(projectId).SETTINGS);
+    revalidatePath(projectRoutes(projectId).TASK_BOARD);
+    return { success: true, error: null };
+}
+
+export type ProjectStatusState = {
+    success: boolean;
+    error: string | null;
+};
+
+export async function setProjectStatusAction(
+    projectId: string,
+    status: "ongoing" | "completed",
+): Promise<ProjectStatusState> {
+    const result = await updateProject(projectId, { status });
+
+    if (!result.project) {
+        return { success: false, error: result.error };
+    }
+
+    revalidatePath(projectRoutes(projectId).SETTINGS);
+    revalidatePath(projectRoutes(projectId).TASK_BOARD);
     return { success: true, error: null };
 }
 

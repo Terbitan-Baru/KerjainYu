@@ -71,7 +71,7 @@ export default function FilterDropdown<T extends string>({
             {isOpen && (
                 <div
                     role="listbox"
-                    className="absolute right-0 top-[calc(100%+0.5rem)] z-10 min-w-44 rounded-lg border border-border bg-card p-1.5 shadow-lg"
+                    className="absolute left-0 top-[calc(100%+0.5rem)] z-10 min-w-44 rounded-lg border border-border bg-card p-1.5 shadow-lg sm:left-auto sm:right-0"
                 >
                     {options.map((option) => {
                         const isSelected = option.value === value;

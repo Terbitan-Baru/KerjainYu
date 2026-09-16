@@ -46,6 +46,12 @@ export const HELP_CATEGORIES: HelpCategory[] = [
           "Buka halaman Arsip, cari proyeknya, lalu tekan tombol \"Aktifkan\". Hanya Ketua proyek yang bisa melakukan ini. Setelah diaktifkan, proyek akan muncul kembali di daftar proyek aktif dan semua aksi normal (klaim, submit, review, dll) bisa dilakukan lagi.",
       },
       {
+        id: "proyek-status-selesai",
+        question: "Apa bedanya \"Diarsipkan\" dengan \"Ditandai Selesai\"? Kenapa tugas masih tidak bisa dikerjakan padahal sudah diaktifkan dari Arsip?",
+        answer:
+          "Ini dua pengaturan yang terpisah. Diarsipkan menyembunyikan proyek dari daftar aktif. Ditandai Selesai adalah status lain yang menunjukkan pekerjaan proyeknya sudah rampung. Keduanya sama-sama membuat tugas jadi read-only, tapi mengubah salah satu tidak otomatis mengubah yang lain.\nKalau proyekmu sudah diaktifkan dari halaman Arsip tapi tugas-tugasnya masih tidak bisa dikerjakan, cek juga status proyeknya di halaman Pengaturan (\"Status Proyek\") — kemungkinan besar statusnya masih \"Selesai\" dan perlu diubah manual jadi \"Aktif\" dari sana oleh Ketua proyek.",
+      },
+      {
         id: "proyek-hapus",
         question: "Bagaimana cara menghapus proyek, dan apakah bisa dibatalkan?",
         answer:

@@ -86,6 +86,25 @@ export function assignTaskRequest(
   });
 }
 
+export type UpdateTaskPayload = Partial<{
+  title: string;
+  description: string;
+  priority: number;
+  deadline: string;
+}>;
+
+export function updateTaskRequest(
+  taskId: number,
+  payload: UpdateTaskPayload,
+  cookie: string,
+) {
+  return apiFetch<Task>(taskPath(taskId), {
+    method: "PATCH",
+    body: payload,
+    cookie,
+  });
+}
+
 export function startTaskRequest(taskId: number, cookie: string) {
   return apiFetch<Task>(`${taskPath(taskId)}/ongoing`, {
     method: "PATCH",

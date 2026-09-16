@@ -53,7 +53,7 @@ export default function ArchiveProjectList({ projects, currentUserId }: ArchiveP
 
     return (
         <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center gap-2 md:items-start md:gap-4 lg:items-end">
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3 md:items-start md:gap-4 lg:items-end">
                 <div className="min-w-0 flex-1 lg:max-w-sm lg:flex-none">
                     <ProjectSearchBar value={search} onChange={setSearch} />
                 </div>

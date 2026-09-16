@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeftRight, Loader2, UserPlus } from "lucide-react";
+import { ArrowLeftRight, Loader2, SquarePen, UserPlus } from "lucide-react";
 import { Task, TaskDetail } from "@/types/task";
 import { Project, ProjectMember } from "@/types/project";
 import { getAvailableActions, ActionDefinition } from "@/lib/api/tasks/taskStatus";
@@ -14,6 +14,7 @@ import TaskActionModal from "@/components/features/task-detail/TaskActionModal";
 import TaskReviewModal from "@/components/features/task-detail/TaskReviewModal";
 import TaskAssignModal from "@/components/features/task-detail/TaskAssignModal";
 import TaskSwapRequestModal from "@/components/features/task-detail/TaskSwapRequestModal";
+import TaskEditModal from "@/components/features/task-detail/TaskEditModal";
 
 
 const REVIEW_ACTIONS: ActionDefinition["action"][] = ["approve", "requestRevision", "reject"];
@@ -52,6 +53,8 @@ export default function TaskDetailActions({
     const [assignModalKey, setAssignModalKey] = useState(0);
     const [isSwapModalOpen, setIsSwapModalOpen] = useState(false);
     const [swapModalKey, setSwapModalKey] = useState(0);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [editModalKey, setEditModalKey] = useState(0);
 
     const isProjectActive = project.status !== "completed" && !project.isArchived;
 
@@ -62,6 +65,9 @@ export default function TaskDetailActions({
     });
     const canAssign = isLeader && isProjectActive && resolveTaskAssigneeId(task) === null;
     const { canRequestSwap } = getSwapEligibility(task, project, currentUserId);
+    // Edit title/description/priority/deadline — leader-only, project harus
+    // aktif (sama seperti aksi lain), tapi tidak bergantung pada status task.
+    const canEdit = isLeader && isProjectActive;
 
     if (!isProjectActive) {
         return (
@@ -73,7 +79,7 @@ export default function TaskDetailActions({
         );
     }
 
-    if (actions.length === 0 && !canAssign && !canRequestSwap) return null;
+    if (actions.length === 0 && !canAssign && !canRequestSwap && !canEdit) return null;
 
     function handleAction(definition: ActionDefinition) {
         if (definition.action === "submit") {
@@ -105,6 +111,24 @@ export default function TaskDetailActions({
             <h3 className="font-inter text-sm font-semibold text-foreground">Aksi</h3>
 
             <div className="mt-3 flex flex-wrap gap-2">
+                {canEdit && (
+                    <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => {
+                            setEditModalKey((key) => key + 1);
+                            setIsEditModalOpen(true);
+                        }}
+                        className={cn(
+                            "flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg px-4 text-sm font-inter font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none",
+                            ACTION_BUTTON_STYLE.default
+                        )}
+                    >
+                        <SquarePen className="size-3.5" aria-hidden="true" />
+                        Edit Tugas
+                    </button>
+                )}
+
                 {canAssign && (
                     <button
                         type="button"
@@ -183,6 +207,16 @@ export default function TaskDetailActions({
                 taskId={task.id}
                 members={members}
             />
+
+            {canEdit && (
+                <TaskEditModal
+                    key={`edit-${editModalKey}`}
+                    isOpen={isEditModalOpen}
+                    onClose={() => setIsEditModalOpen(false)}
+                    projectId={projectId}
+                    task={task}
+                />
+            )}
 
             {canRequestSwap && (
                 <TaskSwapRequestModal

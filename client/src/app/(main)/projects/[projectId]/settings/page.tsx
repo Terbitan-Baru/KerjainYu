@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getProject } from "@/lib/api/projects/projects";
 import SettingsHeader from "@/components/features/settings/SettingsHeader";
 import GeneralSettingsCard from "@/components/features/settings/GeneralSettingsCard";
+import ProjectStatusCard from "@/components/features/settings/ProjectStatusCard";
 import ArchiveProjectCard from "@/components/features/settings/ArchiveProjectCard";
 import DeleteProjectCard from "@/components/features/settings/DeleteProjectCard";
 
@@ -37,6 +38,13 @@ export default async function SettingsPage({ params }: SettingsPageProps) {
                     deadline: toDateInputValue(project.deadline),
                     allowFreeSwap: project.allowFreeSwap,
                 }}
+            />
+
+            <ProjectStatusCard
+                projectId={projectId}
+                projectTitle={project.title}
+                status={project.status}
+                canManage={canManage}
             />
 
             <ArchiveProjectCard

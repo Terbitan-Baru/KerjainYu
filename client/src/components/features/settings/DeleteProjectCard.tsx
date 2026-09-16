@@ -19,6 +19,7 @@ export default function DeleteProjectCard({ projectId, projectTitle, canManage }
     const [isPending, startTransition] = useTransition();
 
     function handleConfirm() {
+        if (isPending) return;
         setError(null);
         startTransition(async () => {
             const result = await deleteProjectAction(projectId);
@@ -28,6 +29,11 @@ export default function DeleteProjectCard({ projectId, projectTitle, canManage }
             }
             window.location.href = ROUTES.PROJECTS;
         });
+    }
+
+    function handleDialogClose() {
+        if (isPending) return;
+        setIsDialogOpen(false);
     }
 
     return (
@@ -62,7 +68,7 @@ export default function DeleteProjectCard({ projectId, projectTitle, canManage }
                 pendingLabel="Menghapus..."
                 isPending={isPending}
                 error={error}
-                onCancel={() => setIsDialogOpen(false)}
+                onCancel={handleDialogClose}
                 onConfirm={handleConfirm}
             />
         </SettingsSection>

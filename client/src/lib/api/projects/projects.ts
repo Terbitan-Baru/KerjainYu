@@ -49,6 +49,13 @@ export function updateProjectRequest(
   });
 }
 
+export function deleteProjectRequest(projectId: string, cookie: string) {
+  return apiFetch<null>(`${PROJECT_PATH}/${projectId}`, {
+    method: "DELETE",
+    cookie,
+  });
+}
+
 
 
 // Fetcher
@@ -129,11 +136,18 @@ export async function updateProject(
 }
 
 export async function deleteProject(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   projectId: string,
 ): Promise<{ success: boolean; error: string | null }> {
-  return {
-    success: false,
-    error: "Hapus proyek belum didukung oleh server. Fitur ini akan aktif setelah endpoint dibuat.",
-  };
+  const cookieStore = await cookies();
+  const cookieHeader = cookieStore.toString();
+
+  try {
+    await deleteProjectRequest(projectId, cookieHeader);
+    return { success: true, error: null };
+  } catch (err) {
+    if (err instanceof ApiRequestError) {
+      return { success: false, error: err.message };
+    }
+    return { success: false, error: "Terjadi kesalahan tak terduga. Coba lagi." };
+  }
 }

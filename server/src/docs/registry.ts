@@ -10,4 +10,5 @@ import './user.docs'
 import './task.docs'
 import './task.swap.request.docs'
 import './submission.docs'
+import './notification.docs'
 export { registry };

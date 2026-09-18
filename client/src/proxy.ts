@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ROUTES } from "@/lib/routes";
 import { callRefreshToken } from "@/lib/api/auth/refreshToken";
 
-const AUTH_ROUTES = [ROUTES.LOGIN, ROUTES.REGISTER];
+const PUBLIC_ROUTES = [ROUTES.LOGIN, ROUTES.REGISTER, ROUTES.LANDING];
 
 // Middleware ini punya dua tanggung jawab:
 //   1. Menolak akses ke halaman terproteksi kalau sama sekali tidak ada
@@ -29,7 +29,7 @@ export async function proxy(request: NextRequest) {
   const accessToken = request.cookies.get("accessToken")?.value;
   const refreshToken = request.cookies.get("refreshToken")?.value;
   const hasSession = Boolean(accessToken || refreshToken);
-  const isAuthRoute = AUTH_ROUTES.some((route) => pathname.startsWith(route));
+  const isAuthRoute = PUBLIC_ROUTES.some((route) => pathname.startsWith(route));
 
   if (!hasSession && !isAuthRoute) {
     const loginUrl = new URL(ROUTES.LOGIN, request.url);

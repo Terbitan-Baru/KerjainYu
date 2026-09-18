@@ -7,6 +7,7 @@ export const ROUTES = {
   HELP_CENTER: "/help",
   LOGIN: "/login",
   REGISTER: "/register",
+  LANDING: "/",
 } as const;
 
 export function projectRoutes(projectId: string) {

@@ -29,3 +29,17 @@ export function markAllNotificationsAsReadRequest(cookie: string) {
     cookie,
   });
 }
+
+export function markNotificationAsReadRequest(id: number, cookie: string) {
+  return apiFetch<void>(`${NOTIFICATIONS_PATH}/${id}/read`, {
+    method: "POST",
+    cookie,
+  });
+}
+
+export function deleteNotificationRequest(id: number, cookie: string) {
+  return apiFetch<void>(`${NOTIFICATIONS_PATH}/${id}`, {
+    method: "DELETE",
+    cookie,
+  });
+}

@@ -17,8 +17,8 @@ export async function notifyUser(data: {
 }
 
 //GET /api/v1/notifications/me 
-export async function getMyNotifications(userId: number) {
-    const notifications = await notificationRepo.getNotificationsByUser(userId)
+export async function getMyNotifications(userId: number, options?: { unreadOnly?: boolean }) {
+    const notifications = await notificationRepo.getNotificationsByUser(userId, { unreadOnly: options?.unreadOnly })
     const unreadNotifications = await notificationRepo.getUnreadCount(userId)
     return { notifications, unreadNotifications }
 }

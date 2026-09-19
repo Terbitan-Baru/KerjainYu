@@ -36,7 +36,8 @@ export async function streamNotifications(req: AuthRequest, res: Response) {
 //GET /api/v1/notifications/me
 export async function getMyNotifications(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-        const { notifications, unreadNotifications: unreadNotificationCount } = await notificationService.getMyNotifications(req.user!.id);
+        const unreadOnly = req.query.unreadOnly === "true";
+        const { notifications, unreadNotifications: unreadNotificationCount } = await notificationService.getMyNotifications(req.user!.id, { unreadOnly });
 
         return res.status(200).json({
             success: true,
@@ -90,7 +91,7 @@ export async function deleteNotificationById(req: AuthRequest, res: Response, ne
     try {
         const notifId = Number(req.params.id)
         await notificationService.deleteNotificationById(notifId, req.user!.id)
-        res.send(204)
+        res.status(204).send()
     } catch (error) {
         next(error);
     }

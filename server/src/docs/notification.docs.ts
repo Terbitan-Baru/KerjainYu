@@ -31,7 +31,13 @@ registry.registerPath({
     path: "/api/v1/notifications/me",
     tags: ["Notifications"],
     summary: "Get current user's notifications",
+    description: "Returns the latest 50 notifications, newest first. Pass `unreadOnly=true` to only return unread ones; omitting it (or any other value) returns all types mixed, unfiltered, same as before this param existed.",
     security: [{ cookieAuth: [] }],
+    request: {
+        query: z.object({
+            unreadOnly: z.string().optional().openapi({ example: "true", description: "Set to \"true\" to only return unread notifications." }),
+        }),
+    },
     responses: {
         200: {
             description: "List of notifications with unread count",

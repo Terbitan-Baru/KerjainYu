@@ -234,7 +234,7 @@ describe('DELETE /api/v1/notifications/:id', () => {
             .delete(`/api/v1/notifications/${notificationId}`)
             .set('Cookie', invitee.cookie);
 
-        expect(res.body).toBe(204);
+        expect(res.status).toBe(204);
 
         const row = await db('notifications').where({ id: notificationId }).first();
         expect(row).toBeUndefined();
